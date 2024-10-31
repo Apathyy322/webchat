@@ -118,7 +118,11 @@
     </div>
 
     <script>
-        const socket = io('http://192.168.30.115:5000');
+        // Replace with your server URL
+        const socket = io(window.location.hostname === 'localhost' 
+            ? 'http://localhost:5000' 
+            : window.location.origin);
+        
         let username = "";
         const connectionStatus = document.getElementById('connection-status');
         
@@ -138,7 +142,7 @@
             document.getElementById('message-input').focus();
         }
 
-        function registerUser() {
+        async function registerUser() {
             const usernameInput = document.getElementById('username');
             const newUsername = usernameInput.value.trim();
             
@@ -147,25 +151,24 @@
                 return;
             }
             
-            fetch('http://192.168.30.115:5000/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: newUsername })
-            })
-            .then(response => {
+            try {
+                const response = await fetch('/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: newUsername })
+                });
+
                 if (response.ok) {
                     completeRegistration(newUsername);
                 } else {
-                    return response.text().then(text => {
-                        throw new Error(text || 'Registration failed');
-                    });
+                    const errorText = await response.text();
+                    throw new Error(errorText || 'Registration failed');
                 }
-            })
-            .catch(error => {
+            } catch (error) {
                 console.error('Error:', error);
                 alert(error.message);
                 usernameInput.value = '';
-            });
+            }
         }
 
         socket.on('chat message', function(data) {
@@ -186,9 +189,7 @@
             const messageInput = document.getElementById('message-input');
             const message = messageInput.value.trim();
             
-            if (!message) {
-                return;
-            }
+            if (!message) return;
 
             socket.emit('chat message', {
                 username: username,
