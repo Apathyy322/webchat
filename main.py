@@ -1,35 +1,33 @@
-import sqlite3
+import os
 from flask import Flask, request, render_template
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
-import os
+from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'pusiclat'
-CORS(app, resources={r"/*": {"origins": "https://apathyy322.github.io/webchat/"}})
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default-secret-key')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///chat_users.db')
+# Handle Heroku postgres:// vs postgresql:// issue
+if app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgres://'):
+    app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace('postgres://', 'postgresql://', 1)
+
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Update CORS to allow your GitHub Pages domain
+CORS(app, resources={r"/*": {"origins": "*"}})
 socketio = SocketIO(app, cors_allowed_origins="*")
-if not os.path.exists('templates'):
-    os.makedirs('templates')
+db = SQLAlchemy(app)
 
-def init_db():
-    conn = sqlite3.connect('chat_users.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users 
-                 (id INTEGER PRIMARY KEY, username TEXT UNIQUE)''')
-    conn.commit()
-    conn.close()
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
 
-def add_user(username):
-    try:
-        conn = sqlite3.connect('chat_users.db')
-        c = conn.cursor()
-        c.execute("INSERT INTO users (username) VALUES (?)", (username,))
-        conn.commit()
-        return True
-    except sqlite3.IntegrityError:
-        return False
-    finally:
-        conn.close()
+    def __repr__(self):
+        return f'<User {self.username}>'
+
+@app.before_first_request
+def create_tables():
+    db.create_all()
 
 @app.route('/')
 def home():
@@ -42,11 +40,15 @@ def register():
         if not username:
             return "Username is required", 400
         
-        if add_user(username):
-            return "User registered successfully", 200
-        else:
+        if User.query.filter_by(username=username).first():
             return "Username already exists", 400
+            
+        new_user = User(username=username)
+        db.session.add(new_user)
+        db.session.commit()
+        return "User registered successfully", 200
     except Exception as e:
+        db.session.rollback()
         print(f"Error during registration: {e}")
         return "Registration failed", 500
 
@@ -73,5 +75,5 @@ def handle_disconnect():
     print('Client disconnected')
 
 if __name__ == '__main__':
-    init_db()
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    socketio.run(app, host='0.0.0.0', port=port)
