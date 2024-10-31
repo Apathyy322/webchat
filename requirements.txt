@@ -7,3 +7,4 @@ psycopg2-binary==2.9.3
 python-socketio==5.5.2
 python-engineio==4.3.1
 eventlet==0.33.1
+Werkzeug==2.0.3
